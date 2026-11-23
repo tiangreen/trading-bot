@@ -1,0 +1,54 @@
+# Copy to config.yaml and adjust.  cp config.example.yaml config.yaml
+state_dir: state
+
+risk:
+  max_drawdown_kill: 0.25    # sleeve goes flat + halts if equity drops 25% from its peak
+  max_order_value: 5000      # clip single BUY orders to this notional
+  max_orders_per_run: 20
+  max_price_age_days: 5      # refuse to trade if latest bar is older than this
+
+brokers:
+  ibkr:
+    host: 127.0.0.1
+    port: 7497               # 7497 = TWS paper, 7496 = TWS live, 4002/4001 = IB Gateway paper/live
+    client_id: 17
+  kraken: {}                 # keys from env: KRAKEN_API_KEY / KRAKEN_API_SECRET
+
+sleeves:
+  stocks:
+    broker: ibkr
+    quote_currency: USD
+    max_capital: 10000       # bot manages at most this much USD
+    min_order_value: 100
+    fee_bps: 5               # backtest: IBKR tiered commission + spread, per side
+    slippage_bps: 5
+    # Sector-diversified US large caps. NOTE: EU retail clients cannot buy US-domiciled
+    # ETFs (SPY, QQQ...) because of PRIIPs/KID rules -- single stocks are fine.
+    symbols: [AAPL, MSFT, AMZN, GOOGL, JPM, JNJ, PG, XOM, V, HD]
+    strategy:
+      sma_window: 200
+      vol_window: 60
+      target_vol: 0.12
+      max_weight: 0.20
+      max_gross: 1.0
+      annualization: 252
+      rebalance: weekly
+      drift_threshold: 0.05
+
+  crypto:
+    broker: kraken
+    quote_currency: EUR
+    max_capital: 2000
+    min_order_value: 20
+    fee_bps: 26              # Kraken taker fee (lower with volume)
+    slippage_bps: 10
+    symbols: [BTC/EUR, ETH/EUR]
+    strategy:
+      sma_window: 200
+      vol_window: 60
+      target_vol: 0.25
+      max_weight: 0.50
+      max_gross: 1.0
+      annualization: 365
+      rebalance: weekly
+      drift_threshold: 0.05

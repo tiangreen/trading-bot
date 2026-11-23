@@ -164,3 +164,22 @@ def test_example_config_loads():
     cfg = load_config("config.example.yaml")
     assert set(cfg.sleeves) == {"stocks", "crypto"}
     assert cfg.sleeves["crypto"].strategy.annualization == 365
+
+
+# ---------------- dashboard ----------------
+
+def test_dashboard_embeds_backtest_data(tmp_path, prices):
+    import json as _json
+
+    from tradingbot.config import Config
+    from tradingbot.dashboard import build_dashboard
+
+    cfg = Config(sleeves={"test": sleeve()}, state_dir=str(tmp_path / "state"))
+    out = build_dashboard(cfg, {"test": (prices, "synthetic")}, tmp_path / "d.html")
+    html = out.read_text()
+    assert "/*__DATA__*/null" not in html
+    raw = html.split("const DATA = ", 1)[1].split(";\n", 1)[0]
+    data = _json.loads(raw)
+    s = data["sleeves"][0]
+    assert s["symbols"] == SYMS and len(s["dates"]) == len(s["equity"]) == len(s["exposure"])
+    assert all(0 <= e <= 1.0001 for e in s["exposure"])

@@ -4,6 +4,7 @@
   python -m tradingbot run                    # dry-run all sleeves (no orders sent)
   python -m tradingbot run --sleeve crypto --live
   python -m tradingbot status
+  python -m tradingbot dashboard --synthetic  # write dashboard.html
   python -m tradingbot reset-killswitch --sleeve crypto
 """
 
@@ -90,6 +91,26 @@ def cmd_run(cfg, args) -> int:
     return 1 if failed else 0
 
 
+def cmd_dashboard(cfg, args) -> int:
+    from .dashboard import build_dashboard
+    from .data import load_csv, load_history, synthetic_prices
+
+    names = [args.sleeve] if args.sleeve else list(cfg.sleeves)
+    prices = {}
+    for i, name in enumerate(names):
+        sleeve = cfg.sleeves[name]
+        if args.synthetic:
+            freq = "D" if sleeve.strategy.annualization == 365 else "B"
+            prices[name] = (synthetic_prices(sleeve.symbols, freq=freq, seed=7 + i), "synthetic random walk")
+        elif args.csv:
+            prices[name] = (load_csv(args.csv), f"csv {args.csv}")
+        else:
+            prices[name] = (load_history(sleeve.symbols, args.start), "yahoo finance (adj. close)")
+    out = build_dashboard(cfg, prices, args.out)
+    print(f"wrote {out} -- open it in a browser")
+    return 0
+
+
 def cmd_status(cfg, args) -> int:
     from .state import StateStore
 
@@ -126,6 +147,13 @@ def main(argv: list[str] | None = None) -> int:
     r.add_argument("--live", action="store_true", help="actually send orders")
     r.add_argument("--force-rebalance", action="store_true")
 
+    d = sub.add_parser("dashboard", help="write an HTML dashboard (backtest + live state)")
+    d.add_argument("--sleeve", help="default: all sleeves")
+    d.add_argument("--start", default="2015-01-01")
+    d.add_argument("--csv", help="use a local CSV of closes instead of Yahoo")
+    d.add_argument("--synthetic", action="store_true", help="offline demo on random data")
+    d.add_argument("--out", default="dashboard.html")
+
     sub.add_parser("status", help="show persisted state")
     k = sub.add_parser("reset-killswitch", help="re-enable a halted sleeve")
     k.add_argument("--sleeve", required=True)
@@ -138,7 +166,7 @@ def main(argv: list[str] | None = None) -> int:
         pass
     cfg = load_config(args.config)
     _setup_logging(cfg.state_dir)
-    return {"backtest": cmd_backtest, "run": cmd_run, "status": cmd_status,
+    return {"backtest": cmd_backtest, "run": cmd_run, "status": cmd_status, "dashboard": cmd_dashboard,
             "reset-killswitch": cmd_reset}[args.cmd](cfg, args)
 
 

@@ -60,6 +60,15 @@ python -m tradingbot backtest --sleeve stocks --synthetic   # 离线随机数据
 
 数据来自 Yahoo Finance（缓存在 `data/`）。看 **最大回撤、夏普、Calmar**，并与等权买入持有对比。注意：默认股票池是“今天的大公司”，回测存在幸存者偏差，结果会偏乐观。
 
+## 仪表盘（Dashboard）
+
+```bash
+python -m tradingbot dashboard --synthetic          # 离线随机数据演示
+python -m tradingbot dashboard --start 2015-01-01   # Yahoo 历史数据，所有仓位组
+```
+
+生成单文件 `dashboard.html`（浏览器直接打开）。所有数字都来自本项目：回测（与实盘同一套规则）、`state/state.json`（熔断状态、净值峰值）和 `state/trades.csv`（真实/dry-run 订单）。中间的环形图：转一圈 = 整个回测期，每条线 = 某资产的 价格/均线（20/50/100/200 日）对数比，颜色 = 当时的仓位水平，向外的细线 = 仓位，向内的红线 = 回撤，红点 = 最深的回撤谷底；鼠标悬停可查看任意一周的权益与持仓。
+
 ## 2. 模拟盘（强烈建议跑 ≥ 1 个月）
 
 **IBKR**：在账户管理里开通 Paper Trading 账户 → 启动 TWS 或 IB Gateway，登录模拟账户 → 设置 *API → Settings*：勾选 *Enable ActiveX and Socket Clients*，端口 7497（TWS 模拟）/ 4002（Gateway 模拟），可勾选 *Read-Only API* 先测试读取。在模拟账户里准备 USD 现金。

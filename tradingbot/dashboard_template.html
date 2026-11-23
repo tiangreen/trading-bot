@@ -1,0 +1,514 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Tradingbot Control Room</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&display=swap">
+<style>
+/* Layout: instrument console. Header strip, module chips, hero "trend torus" + right telemetry rail,
+   full-width equity stream, three analysis panels. Single dark look by design. */
+:root {
+  color-scheme: dark;
+  --bg: #070a0f;
+  --panel: #0b1017;
+  --line: #1a2330;
+  --line-2: #243142;
+  --fg: #c9d4e0;
+  --dim: #6b7c8f;
+  --amber: #f2b13c;
+  --violet: #8f86ff;
+  --cyan: #46d3c4;
+  --red: #ff4d61;
+  --green: #5fd38a;
+  --mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+* { box-sizing: border-box }
+html, body { margin: 0; background: var(--bg); color: var(--fg) }
+body {
+  font: 11px/1.45 var(--mono);
+  font-variant-numeric: tabular-nums;
+  padding-block: 12px 24px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  letter-spacing: .02em;
+}
+.up { text-transform: uppercase; letter-spacing: .08em }
+.dim { color: var(--dim) }
+.amber { color: var(--amber) } .violet { color: var(--violet) } .cyan { color: var(--cyan) }
+.red { color: var(--red) } .green { color: var(--green) }
+
+header { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 6px 16px; border-left: 2px solid var(--amber); padding-left: 8px }
+header h1 { margin: 0; font-size: 15px; font-weight: 700; color: var(--amber); letter-spacing: .06em }
+header h1 .plus { color: var(--dim); margin: 0 6px }
+header h1 .b { color: var(--violet) }
+.meta { display: flex; flex-wrap: wrap; gap: 4px 12px; align-items: center }
+.tabs { display: flex; gap: 6px }
+.tab { font: inherit; text-transform: uppercase; letter-spacing: .08em; color: var(--dim); background: transparent; border: 1px solid var(--line-2); padding: 4px 10px; cursor: pointer }
+.tab[aria-pressed="true"] { color: var(--bg); background: var(--amber); border-color: var(--amber) }
+.tab:focus-visible { outline: 1px solid var(--cyan); outline-offset: 2px }
+.badge { padding: 2px 6px; border: 1px solid currentColor }
+
+.chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 12px 0 8px }
+.chip { border: 1px solid var(--line-2); padding: 3px 8px; color: #9fb4c9; background: #0c131c }
+.chip.on { border-color: var(--amber); color: var(--amber); background: #1b1408 }
+.chip.warn { border-color: var(--red); color: var(--red) }
+.statusline { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 4px 16px; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); padding: 5px 0; margin-bottom: 10px; color: var(--dim) }
+.statusline b { color: var(--fg); font-weight: 500 }
+
+.panel { background: var(--panel); border: 1px solid var(--line); padding: 10px; min-width: 0 }
+.ph { display: flex; justify-content: space-between; gap: 8px; color: var(--dim); text-transform: uppercase; letter-spacing: .08em; margin-bottom: 8px }
+.ph b { font-weight: 500; color: var(--fg) }
+
+.main { display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 10px }
+.hero { position: relative; padding: 0; min-height: 560px; overflow: hidden }
+.hero canvas { display: block; width: 100%; height: 100%; position: absolute; inset: 0; cursor: crosshair; touch-action: pan-y }
+.hero .corner { position: absolute; pointer-events: none; color: var(--dim) }
+.hero .tr { top: 10px; right: 12px; text-align: right }
+.hero .tl { top: 10px; left: 12px }
+.callout { position: absolute; left: 14px; bottom: 14px; border: 1px solid var(--amber); background: rgba(10, 8, 4, .86); padding: 8px 10px; max-width: calc(100% - 28px); pointer-events: none }
+.callout .t { color: var(--amber); margin-bottom: 3px }
+.legend { position: absolute; right: 12px; bottom: 12px; text-align: right; color: var(--dim); pointer-events: none; display: grid; gap: 2px }
+.sw { display: inline-block; width: 8px; height: 8px; margin-right: 5px; vertical-align: -1px }
+
+.rail { display: grid; gap: 10px; align-content: start; min-width: 0 }
+.spark { width: 100%; height: 70px; display: block }
+.row { display: grid; grid-template-columns: 64px 1fr 56px; gap: 6px; align-items: center; height: 15px }
+.bar-track { position: relative; height: 7px; background: #0f1721 }
+.bar-track .mid { position: absolute; left: 50%; top: -2px; bottom: -2px; width: 1px; background: var(--line-2) }
+.bar { position: absolute; top: 0; bottom: 0 }
+.vbars { display: flex; align-items: flex-end; gap: 3px; height: 70px; border-bottom: 1px solid var(--line-2) }
+.vbars div { flex: 1; min-width: 3px }
+.vlabels { display: flex; gap: 3px; color: var(--dim); font-size: 9px }
+.vlabels span { flex: 1; min-width: 3px; overflow: hidden; text-align: center; white-space: nowrap }
+.step { display: grid; grid-template-columns: minmax(0, 1fr) 64px 52px; gap: 8px; align-items: center; min-height: 16px }
+.step span:first-child { white-space: nowrap; overflow: hidden; text-overflow: ellipsis }
+.step .pbar { height: 5px; background: #0f1721 }
+.step .pbar i { display: block; height: 100% }
+.kv { display: grid; grid-template-columns: 1fr auto; gap: 1px 12px }
+.kv dt { color: var(--dim); text-transform: uppercase; letter-spacing: .06em }
+.kv dd { margin: 0; text-align: right }
+.pods { display: grid; grid-template-columns: repeat(8, 1fr); gap: 3px }
+.pods div { height: 14px }
+.queue { display: grid; gap: 1px; max-height: 150px; overflow: auto }
+.queue div { display: grid; grid-template-columns: 76px 1fr auto; gap: 8px; white-space: nowrap }
+
+.stream { margin-top: 10px }
+.stream canvas { width: 100%; height: 110px; display: block }
+.bottom { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin-top: 10px }
+.bottom canvas { width: 100%; height: 220px; display: block }
+.db { display: grid; grid-template-columns: 96px 1fr 60px; gap: 8px; align-items: center; height: 30px }
+.db .track { position: relative; height: 12px }
+.db .track .l { position: absolute; top: 5.5px; height: 1px; background: var(--line-2) }
+.db .dot { position: absolute; top: 1px; width: 10px; height: 10px; margin-left: -5px; border-radius: 50% }
+footer { margin-top: 12px; color: var(--dim); display: flex; flex-wrap: wrap; justify-content: space-between; gap: 6px }
+
+@media (max-width: 980px) {
+  .main { grid-template-columns: minmax(0, 1fr) }
+  .bottom { grid-template-columns: minmax(0, 1fr) }
+  .hero { min-height: 0; aspect-ratio: 1 / 1; max-width: 100% }
+  .legend { display: none }
+  .callout { left: 8px; bottom: 8px; max-width: calc(100% - 16px); font-size: 10px; padding: 6px 8px }
+}
+</style>
+</head>
+<body>
+<header>
+  <div>
+    <h1 class="up">TRADINGBOT<span class="plus">/</span><span class="b">TREND + VOL TARGET</span></h1>
+    <div class="dim up" id="subtitle"></div>
+  </div>
+  <div class="meta">
+    <span id="sourceBadge" class="badge up"></span>
+    <div class="tabs" id="tabs" role="group" aria-label="Sleeve"></div>
+  </div>
+</header>
+
+<div class="chips" id="chips"></div>
+<div class="statusline up" id="statusline"></div>
+
+<section class="main">
+  <div class="panel hero" id="hero">
+    <canvas id="torus" aria-label="Trend torus: one full turn equals the whole backtest; strands are price divided by moving average"></canvas>
+    <div class="corner tl up" id="heroTL"></div>
+    <div class="corner tr up" id="heroTR"></div>
+    <div class="callout" id="callout"></div>
+    <div class="legend up">
+      <span><i class="sw" style="background:var(--amber)"></i>invested &gt; 60%</span>
+      <span><i class="sw" style="background:var(--violet)"></i>partly invested</span>
+      <span><i class="sw" style="background:var(--cyan)"></i>mostly cash</span>
+      <span><i class="sw" style="background:var(--red)"></i>drawdown trough</span>
+    </div>
+  </div>
+
+  <aside class="rail">
+    <div class="panel">
+      <div class="ph"><span>Exposure · last 90 bars</span><b class="amber" id="expNow"></b></div>
+      <canvas class="spark" id="expSpark"></canvas>
+      <div class="ph" style="margin:4px 0 0"><span class="cyan">turnover</span><span class="red">drawdown</span></div>
+    </div>
+    <div class="panel">
+      <div class="ph"><span>Trend distance · price / SMA</span><b id="smaLbl"></b></div>
+      <div id="trend"></div>
+    </div>
+    <div class="panel">
+      <div class="ph"><span>Weight split</span><b id="splitLbl"></b></div>
+      <div class="vbars" id="vbars"></div>
+      <div class="vlabels" id="vlabels"></div>
+    </div>
+    <div class="panel">
+      <div class="ph"><span>Cycle state · runner.py</span></div>
+      <div id="cycle"></div>
+    </div>
+    <div class="panel">
+      <div class="ph"><span>Telemetry readout</span></div>
+      <dl class="kv" id="telemetry"></dl>
+    </div>
+    <div class="panel">
+      <div class="ph"><span>Monthly returns · last 32</span><b id="podsLbl"></b></div>
+      <div class="pods" id="pods"></div>
+    </div>
+    <div class="panel">
+      <div class="ph"><span id="queueTitle">Decision queue</span></div>
+      <div class="queue" id="queue"></div>
+    </div>
+  </aside>
+</section>
+
+<div class="panel stream">
+  <div class="ph"><span>Equity stream · strategy vs equal-weight buy &amp; hold · log scale</span><b class="amber" id="streamLbl"></b></div>
+  <canvas id="stream"></canvas>
+</div>
+
+<section class="bottom">
+  <div class="panel">
+    <div class="ph"><span>Average weight by asset</span><b id="roseLbl"></b></div>
+    <canvas id="rose"></canvas>
+  </div>
+  <div class="panel">
+    <div class="ph"><span>Strategy vs buy &amp; hold</span><span><span class="dim">●</span> B&amp;H &nbsp;<span class="amber">●</span> STRAT</span></div>
+    <div id="dumbbell"></div>
+  </div>
+  <div class="panel">
+    <div class="ph"><span>Drawdown episodes · pareto</span><b id="paretoLbl"></b></div>
+    <canvas id="pareto"></canvas>
+  </div>
+</section>
+
+<footer class="up">
+  <span id="footSrc"></span>
+  <span>Generated by python -m tradingbot dashboard · not investment advice</span>
+</footer>
+
+<script>
+const DATA = /*__DATA__*/null;
+const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+const C = { amber: css('--amber'), violet: css('--violet'), cyan: css('--cyan'), red: css('--red'),
+  green: css('--green'), dim: css('--dim'), line: css('--line'), line2: css('--line-2'), fg: css('--fg'), panel: css('--panel') };
+const $ = id => document.getElementById(id);
+const pct = (x, d = 1) => x == null ? '—' : (x * 100).toFixed(d) + '%';
+const spct = (x, d = 1) => x == null ? '—' : (x >= 0 ? '+' : '') + (x * 100).toFixed(d) + '%';
+const num = (x, d = 2) => x == null ? '—' : Number(x).toFixed(d);
+const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
+let S = null, sleeveIdx = 0;
+try { sleeveIdx = Math.min(+localStorage.getItem('tb.sleeve') || 0, DATA.sleeves.length - 1) } catch (e) {}
+
+function fit(cv) {
+  const dpr = window.devicePixelRatio || 1, r = cv.getBoundingClientRect();
+  cv.width = Math.max(1, Math.round(r.width * dpr)); cv.height = Math.max(1, Math.round(r.height * dpr));
+  const ctx = cv.getContext('2d'); ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  return { ctx, w: r.width, h: r.height };
+}
+const regimeColor = e => e > 0.6 ? C.amber : e > 0.25 ? C.violet : C.cyan;
+
+/* ---------------- header / chips / status ---------------- */
+function renderHeader() {
+  $('tabs').innerHTML = DATA.sleeves.map((s, i) =>
+    `<button class="tab" type="button" id="tab-${s.name}" aria-pressed="${i === sleeveIdx}" data-i="${i}">${s.name}</button>`).join('');
+  $('tabs').onclick = e => { const b = e.target.closest('.tab'); if (b) select(+b.dataset.i) };
+}
+function renderTop() {
+  const st = S.state || {}, synth = /synthetic/i.test(S.source);
+  $('subtitle').textContent = `${S.broker} · ${S.quote} · ${S.symbols.length} assets · ${S.start} → ${S.end} · ${S.bars} bars`;
+  const b = $('sourceBadge');
+  b.textContent = synth ? 'synthetic data · not real prices' : 'data: ' + S.source;
+  b.className = 'badge up ' + (synth ? 'red' : 'cyan');
+  const age = Math.round((new Date(DATA.generated) - new Date(S.end)) / 864e5);
+  const stale = age > DATA.risk.max_price_age_days;
+  const chips = [
+    ['data.load_history', 1], ['strategy.sma_filter', 1], ['strategy.inv_vol', 1], ['strategy.vol_target', 1],
+    ['rebalance.decide_weights', 1], ['rebalance.plan_orders', 1], [stale ? 'risk.check_prices: stale' : 'risk.check_prices', stale ? 2 : 1],
+    ['risk.limit_orders', 1], [st.halted ? 'risk.kill_switch: halted' : 'risk.kill_switch: armed', st.halted ? 2 : 1],
+    ['broker.' + S.broker, 0], ['state.save', 0], ['backtest.run', 1]];
+  $('chips').innerHTML = chips.map(([t, k]) => `<span class="chip ${k === 2 ? 'warn' : k ? 'on' : ''}">${t}</span>`).join('');
+  const p = S.params;
+  $('statusline').innerHTML = `<span>SMA <b>${p.sma_window}</b> | VOL WIN <b>${p.vol_window}</b> | TARGET VOL <b>${pct(p.target_vol, 0)}</b> | MAX W <b>${pct(p.max_weight, 0)}</b> | REBAL <b>${p.rebalance}</b> | DRIFT <b>${pct(p.drift_threshold, 0)}</b></span>` +
+    `<span>KILL @ <b>${pct(DATA.risk.max_drawdown_kill, 0)}</b> DD | MAX ORDER <b>${DATA.risk.max_order_value}</b> | BAR AGE <b class="${stale ? 'red' : ''}">${age}D</b></span>`;
+  $('footSrc').textContent = `source: ${S.source} · generated ${DATA.generated}`;
+}
+
+/* ---------------- hero: trend torus ---------------- */
+const torus = { off: null, spin: 0, hover: null, geo: null, last: 0 };
+function buildTorus() {
+  const cv = $('torus'), r = cv.getBoundingClientRect(), dpr = window.devicePixelRatio || 1;
+  const size = Math.min(r.width, r.height);
+  const off = document.createElement('canvas'); off.width = off.height = Math.round(size * dpr);
+  const g = off.getContext('2d'); g.scale(dpr, dpr);
+  const cx = size / 2, cy = size / 2, N = S.dates.length;
+  const R0 = size * 0.31, amp = size * 0.085;
+  const allV = S.strands.flatMap(s => s.v).map(Math.abs).sort((a, b) => a - b);
+  const p95 = allV[Math.floor(allV.length * 0.95)] || 0.1;
+  const ang = i => -Math.PI / 2 + 2 * Math.PI * i / N;
+  torus.geo = { cx, cy, size, N, R0, ang };
+  g.globalCompositeOperation = 'lighter';
+
+  // inward hairs = drawdown depth, outward hairs = exposure
+  g.lineWidth = 0.6;
+  for (let i = 0; i < N; i++) {
+    const a = ang(i), c = Math.cos(a), s = Math.sin(a);
+    const e = S.exposure[i] || 0, dd = -(S.drawdown[i] || 0);
+    const rOut = R0 + amp * 1.25;
+    g.strokeStyle = regimeColor(e); g.globalAlpha = 0.10 + 0.25 * e;
+    g.beginPath(); g.moveTo(cx + c * rOut, cy + s * rOut);
+    const L = rOut + size * 0.13 * e * (0.6 + 0.4 * Math.random());
+    g.lineTo(cx + c * L, cy + s * L); g.stroke();
+    if (dd > 0.005) {
+      const rIn = R0 - amp * 1.4, Li = rIn - size * 0.35 * Math.min(dd, 0.4);
+      g.strokeStyle = C.red; g.globalAlpha = 0.04 + Math.min(dd, 0.16);
+      g.beginPath(); g.moveTo(cx + c * rIn, cy + s * rIn); g.lineTo(cx + c * Li, cy + s * Li); g.stroke();
+    }
+  }
+  // strands: log(price / SMA_L) per asset and lookback, 3 jittered copies each
+  const looks = [...new Set(S.strands.map(s => s.lookback))];
+  S.strands.forEach((st, k) => {
+    const li = looks.indexOf(st.lookback), ai = S.symbols.indexOf(st.symbol);
+    const base = R0 + (li - (looks.length - 1) / 2) * size * 0.022 + (ai / S.symbols.length - 0.5) * size * 0.03;
+    for (let copy = 0; copy < 5; copy++) {
+      const jit = (copy - 2) * size * 0.006;
+      const paths = { [C.amber]: new Path2D(), [C.violet]: new Path2D(), [C.cyan]: new Path2D() };
+      let px = null, py = null;
+      for (let i = 0; i < N; i++) {
+        const v = Math.max(-2.5, Math.min(2.5, st.v[i] / p95));
+        const rr = base + jit * (1 + Math.abs(v)) + amp * v * 0.45, a = ang(i);
+        const x = cx + Math.cos(a) * rr, y = cy + Math.sin(a) * rr;
+        if (px != null) { const p = paths[regimeColor(S.exposure[i] || 0)]; p.moveTo(px, py); p.lineTo(x, y) }
+        px = x; py = y;
+      }
+      g.lineWidth = copy === 2 ? 0.8 : 0.4; g.globalAlpha = copy === 2 ? 0.2 : 0.07;
+      for (const [col, p] of Object.entries(paths)) { g.strokeStyle = col; g.stroke(p) }
+    }
+  });
+  // drawdown troughs
+  g.globalCompositeOperation = 'source-over';
+  const idxOf = d => { let lo = 0; while (lo < N - 1 && S.dates[lo] < d) lo++; return lo };
+  S.episodes.slice().sort((a, b) => a.depth - b.depth).slice(0, 6).forEach(ep => {
+    const i = idxOf(ep.trough), a = ang(i), rr = R0 - amp * (0.4 + Math.min(-ep.depth * 3, 1));
+    const x = cx + Math.cos(a) * rr, y = cy + Math.sin(a) * rr;
+    g.globalAlpha = 0.25; g.fillStyle = C.red; g.beginPath(); g.arc(x, y, 9, 0, 7); g.fill();
+    g.globalAlpha = 1; g.beginPath(); g.arc(x, y, 3, 0, 7); g.fill();
+  });
+  // year ticks
+  g.globalAlpha = 1; g.font = '9px ' + css('--mono'); g.fillStyle = C.dim; g.strokeStyle = C.line2; g.lineWidth = 1;
+  let prevY = null;
+  S.dates.forEach((d, i) => {
+    const y = d.slice(0, 4); if (y === prevY) return; prevY = y;
+    const a = ang(i), r1 = size * 0.475, r2 = size * 0.49;
+    g.beginPath(); g.moveTo(cx + Math.cos(a) * r1, cy + Math.sin(a) * r1); g.lineTo(cx + Math.cos(a) * r2, cy + Math.sin(a) * r2); g.stroke();
+    if (i > 0) { g.save(); g.translate(cx + Math.cos(a) * (r1 - 12), cy + Math.sin(a) * (r1 - 12)); g.rotate(a + Math.PI / 2); g.textAlign = 'center'; g.fillText(y, 0, 0); g.restore() }
+  });
+  torus.off = off;
+}
+function drawTorus(t) {
+  const cv = $('torus'); const { ctx, w, h } = fit(cv);
+  const key = S.name + ':' + Math.round(Math.min(w, h));
+  if (torus.key !== key) { buildTorus(); torus.key = key }
+  const { size, cx, cy, ang, N, R0 } = torus.geo;
+  const ox = (w - size) / 2, oy = (h - size) / 2;
+  ctx.save(); ctx.translate(ox + cx, oy + cy); ctx.rotate(torus.spin);
+  ctx.drawImage(torus.off, -cx, -cy, size, size);
+  // current-bar marker (end of the ring) or hover marker
+  const i = torus.hover ?? N - 1, a = ang(i);
+  ctx.strokeStyle = torus.hover == null ? C.amber : C.fg; ctx.globalAlpha = 0.9; ctx.lineWidth = 1;
+  ctx.setLineDash([2, 3]); ctx.beginPath();
+  ctx.moveTo(Math.cos(a) * size * 0.08, Math.sin(a) * size * 0.08); ctx.lineTo(Math.cos(a) * size * 0.49, Math.sin(a) * size * 0.49); ctx.stroke();
+  ctx.setLineDash([]); ctx.beginPath(); ctx.arc(Math.cos(a) * R0, Math.sin(a) * R0, 4, 0, 7); ctx.stroke();
+  ctx.restore();
+  $('heroTR').innerHTML = `spin ${((torus.spin * 180 / Math.PI) % 360 + 360).toFixed(1)}° · 1 turn = ${S.start.slice(0, 4)}→${S.end.slice(0, 4)}<br><span class="dim">${S.strands.length} strands · ${N} weekly nodes</span>`;
+}
+function renderCallout(i) {
+  const N = S.dates.length; i = i ?? N - 1;
+  const ws = S.symbols.map(s => [s, S.weights[s][i] || 0]).filter(x => x[1] > 0).sort((a, b) => b[1] - a[1]).slice(0, 4);
+  $('callout').innerHTML = `<div class="t up">${i === N - 1 ? 'latest bar' : 'scrub'} ${S.dates[i]} | equity ${num(S.equity[i], 3)}× | dd ${pct(S.drawdown[i])}</div>` +
+    `<div class="up">exposure <span class="amber">${pct(S.exposure[i], 0)}</span> · cash ${pct(1 - S.exposure[i], 0)} · ` +
+    (ws.length ? ws.map(([s, w]) => `${s} ${pct(w, 0)}`).join(' · ') : '<span class="cyan">all cash: trend filter off</span>') + '</div>';
+}
+function heroPointer(e) {
+  if (!torus.geo) return;
+  const r = $('torus').getBoundingClientRect(), { size, N } = torus.geo;
+  const x = e.clientX - r.left - r.width / 2, y = e.clientY - r.top - r.height / 2;
+  const d = Math.hypot(x, y);
+  if (d < size * 0.12 || d > size * 0.5) { torus.hover = null; renderCallout(); return }
+  let a = Math.atan2(y, x) - torus.spin + Math.PI / 2;
+  a = ((a % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI);
+  torus.hover = Math.min(N - 1, Math.round(a / (2 * Math.PI) * N));
+  renderCallout(torus.hover);
+}
+function loop(t) {
+  if (!reduceMotion && torus.hover == null) torus.spin += (t - (torus.last || t)) * 0.000035;
+  torus.last = t; drawTorus(t); requestAnimationFrame(loop);
+}
+
+/* ---------------- right rail ---------------- */
+function renderRail() {
+  const R = S.recent, n = R.exposure.length;
+  $('expNow').textContent = pct(R.exposure[n - 1], 0);
+  { const { ctx, w, h } = fit($('expSpark'));
+    const x = i => i / (n - 1) * w;
+    ctx.strokeStyle = C.line; ctx.lineWidth = 1;
+    [0.25, 0.5, 0.75].forEach(f => { ctx.beginPath(); ctx.moveTo(0, h * f); ctx.lineTo(w, h * f); ctx.stroke() });
+    // exposure as a step line
+    ctx.strokeStyle = C.amber; ctx.lineWidth = 1.5; ctx.beginPath();
+    R.exposure.forEach((e, i) => { const y = 4 + (1 - e) * (h * 0.55); i ? (ctx.lineTo(x(i), ctx._y), ctx.lineTo(x(i), y)) : ctx.moveTo(0, y); ctx._y = y });
+    ctx.stroke();
+    ctx.fillStyle = C.amber; ctx.beginPath(); ctx.arc(w - 2, ctx._y, 2.5, 0, 7); ctx.fill();
+    const tmax = Math.max(...R.turnover, 0.01);
+    ctx.fillStyle = C.cyan; R.turnover.forEach((v, i) => { if (v > 0) ctx.fillRect(x(i) - 1, h * 0.8 - v / tmax * h * 0.18, 2, v / tmax * h * 0.18) });
+    const dmin = Math.min(...R.drawdown, -0.01);
+    ctx.strokeStyle = C.red; ctx.lineWidth = 1; ctx.beginPath();
+    R.drawdown.forEach((d, i) => { const y = h * 0.82 + d / dmin * h * 0.16; i ? ctx.lineTo(x(i), y) : ctx.moveTo(0, y) }); ctx.stroke();
+  }
+  $('smaLbl').textContent = 'SMA' + S.params.sma_window;
+  const tmax = Math.max(0.05, ...S.assets.map(a => Math.abs(a.trend || 0)));
+  $('trend').innerHTML = S.assets.map(a => {
+    const t = a.trend ?? 0, wpc = Math.abs(t) / tmax * 50;
+    return `<div class="row"><span>${a.symbol}</span><div class="bar-track"><i class="mid"></i><i class="bar" style="${t >= 0 ? 'left:50%' : `left:${50 - wpc}%`};width:${wpc}%;background:${t >= 0 ? C.amber : C.cyan}"></i></div><span class="${t >= 0 ? 'amber' : 'cyan'}" style="text-align:right">${spct(a.trend)}</span></div>`;
+  }).join('');
+  const inv = S.assets.reduce((s, a) => s + (a.weight || 0), 0);
+  $('splitLbl').innerHTML = `<span class="amber">INV ${pct(inv, 0)}</span> · <span class="violet">CASH ${pct(1 - inv, 0)}</span>`;
+  const wmax = Math.max(S.params.max_weight, 1 - inv);
+  $('vbars').innerHTML = S.assets.map(a => `<div title="${a.symbol} ${pct(a.weight)}" style="height:${(a.weight || 0) / wmax * 100}%;background:${C.amber}"></div>`).join('') +
+    `<div title="cash" style="height:${(1 - inv) / wmax * 100}%;background:${C.violet}"></div>`;
+  $('vlabels').innerHTML = S.assets.map(a => `<span>${a.symbol.split('/')[0]}</span>`).join('') + '<span>CASH</span>';
+
+  const st = S.state || {}, age = Math.round((new Date(DATA.generated) - new Date(S.end)) / 864e5);
+  const stale = age > DATA.risk.max_price_age_days, ddNow = S.drawdown[S.drawdown.length - 1];
+  const ddUse = Math.min(1, -ddNow / DATA.risk.max_drawdown_kill);
+  const steps = [
+    ['01 data.load', 1, 'DONE', C.fg], ['02 risk.check', 1, stale ? 'STALE' : 'OK', stale ? C.red : C.fg],
+    ['03 strategy.target', 1, 'DONE', C.fg], ['04 rebalance.' + S.params.rebalance, 1, 'READY', C.fg],
+    ['05 dd vs kill limit', ddUse, st.halted ? 'HALTED' : pct(ddUse, 0), st.halted || ddUse > .8 ? C.red : C.amber]];
+  $('cycle').innerHTML = steps.map(([l, f, s, c]) => `<div class="step up"><span>${l}</span><div class="pbar"><i style="width:${f * 100}%;background:${c === C.fg ? '#dfe7ef' : c}"></i></div><span style="color:${c === C.fg ? C.dim : c};text-align:right">${s}</span></div>`).join('');
+
+  const s = S.stats.strategy;
+  const kv = [['CAGR', pct(s.cagr)], ['Volatility', pct(s.volatility)], ['Sharpe', num(s.sharpe)], ['Max drawdown', `<span class="red">${pct(s.max_drawdown)}</span>`],
+    ['Calmar', num(s.calmar)], ['Avg exposure', pct(s.avg_exposure, 0)], ['Turnover / yr', num(s.turnover_per_year) + '×'],
+    ['Peak equity (live)', st.peak_equity ? num(st.peak_equity) + ' ' + S.quote : '—'], ['Kill switch', st.halted ? '<span class="red">HALTED</span>' : '<span class="green">ARMED</span>']];
+  $('telemetry').innerHTML = kv.map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join('');
+
+  const m = S.monthly.slice(-32), mm = Math.max(0.02, ...m.map(x => Math.abs(x.r)));
+  const pos = m.filter(x => x.r > 0).length;
+  $('podsLbl').textContent = `${pos}/${m.length} up`;
+  $('pods').innerHTML = m.map(x => { const a = 0.15 + 0.85 * Math.min(1, Math.abs(x.r) / mm), c = x.r >= 0 ? '242,177,60' : '70,211,196';
+    return `<div title="${x.m} ${spct(x.r)}" style="background:rgba(${c},${a})"></div>` }).join('');
+
+  const live = S.trades.length > 0;
+  $('queueTitle').textContent = live ? 'Order log · state/trades.csv' : 'Decision queue · backtest rebalances';
+  const rows = live
+    ? S.trades.slice().reverse().map(t => `<div><span class="dim">${t.timestamp.slice(0, 10)}</span><span>${t.side.toUpperCase()} ${t.symbol} ${t.quantity}</span><span class="${t.dry_run === 'True' ? 'dim' : 'green'}">${t.dry_run === 'True' ? 'dry' : t.result}</span></div>`)
+    : S.decisions.slice().reverse().map(d => `<div><span class="dim">${d.date}</span><span>${d.side === 'buy' ? '<span class="amber">BUY </span>' : '<span class="cyan">SELL</span>'} ${d.symbol}</span><span>${spct(d.dw)} → ${pct(d.w, 0)}</span></div>`);
+  $('queue').innerHTML = rows.join('') || '<div class="dim">no trades yet</div>';
+}
+
+/* ---------------- stream ---------------- */
+function renderStream() {
+  const { ctx, w, h } = fit($('stream'));
+  const all = [...S.equity, ...S.bench].filter(v => v > 0).map(Math.log);
+  const lo = Math.min(...all), hi = Math.max(...all), N = S.equity.length, pad = 14;
+  const x = i => i / (N - 1) * w, y = v => h - pad - (Math.log(v) - lo) / (hi - lo || 1) * (h - 2 * pad);
+  ctx.font = '9px ' + css('--mono'); ctx.fillStyle = C.dim; ctx.strokeStyle = C.line;
+  let py = null; S.dates.forEach((d, i) => { if (d.slice(0, 4) !== py) { py = d.slice(0, 4); ctx.beginPath(); ctx.moveTo(x(i), 0); ctx.lineTo(x(i), h); ctx.stroke(); ctx.fillText(py, x(i) + 3, h - 2) } });
+  const line = (arr, col, lw) => { ctx.strokeStyle = col; ctx.lineWidth = lw; ctx.beginPath(); arr.forEach((v, i) => i ? ctx.lineTo(x(i), y(v)) : ctx.moveTo(0, y(v))); ctx.stroke() };
+  // exposure underlay
+  S.exposure.forEach((e, i) => { ctx.fillStyle = regimeColor(e); ctx.globalAlpha = 0.07 + e * 0.12; ctx.fillRect(x(i), 0, w / N + 0.5, h - pad) });
+  ctx.globalAlpha = 1;
+  line(S.bench, C.violet, 1); line(S.equity, C.amber, 1.6);
+  ctx.fillStyle = C.amber; ctx.beginPath(); ctx.arc(w - 2, y(S.equity[N - 1]), 3, 0, 7); ctx.fill();
+  $('streamLbl').innerHTML = `${num(S.equity[N - 1])}× <span class="violet">vs ${num(S.bench[N - 1])}×</span>`;
+}
+
+/* ---------------- bottom panels ---------------- */
+function renderRose() {
+  const { ctx, w, h } = fit($('rose'));
+  const cx = w / 2, cy = h / 2, R = Math.min(w, h) / 2 - 18, n = S.assets.length;
+  const mx = Math.max(...S.assets.map(a => a.avg_weight || 0), 0.01);
+  S.assets.forEach((a, i) => {
+    const a0 = -Math.PI / 2 + i / n * 2 * Math.PI, a1 = a0 + 2 * Math.PI / n * 0.92;
+    const r = 26 + (R - 26) * Math.sqrt((a.avg_weight || 0) / mx);
+    ctx.fillStyle = i === S.assets.reduce((b, x, j) => (x.avg_weight > S.assets[b].avg_weight ? j : b), 0) ? C.amber : '#2a3a52';
+    ctx.beginPath(); ctx.moveTo(cx, cy); ctx.arc(cx, cy, r, a0, a1); ctx.closePath(); ctx.fill();
+    const am = (a0 + a1) / 2; ctx.fillStyle = C.dim; ctx.font = '9px ' + css('--mono'); ctx.textAlign = 'center';
+    ctx.fillText(a.symbol.split('/')[0], cx + Math.cos(am) * (R + 10), cy + Math.sin(am) * (R + 10) + 3);
+  });
+  ctx.fillStyle = C.panel; ctx.strokeStyle = C.amber; ctx.lineWidth = 1.5;
+  ctx.beginPath(); ctx.arc(cx, cy, 24, 0, 7); ctx.fill(); ctx.stroke();
+  ctx.fillStyle = C.amber; ctx.font = '11px ' + css('--mono'); ctx.fillText(pct(S.stats.strategy.avg_exposure, 0), cx, cy + 4);
+  $('roseLbl').textContent = 'centre = avg exposure';
+}
+function renderDumbbell() {
+  const s = S.stats.strategy, b = S.stats.buy_and_hold;
+  const rows = [['total return', 'total_return', pct, 1], ['cagr', 'cagr', pct, 1], ['volatility', 'volatility', pct, -1],
+    ['sharpe', 'sharpe', num, 1], ['max drawdown', 'max_drawdown', pct, 1], ['calmar', 'calmar', num, 1]];
+  $('dumbbell').innerHTML = rows.map(([lbl, k, f, better]) => {
+    const a = b[k], z = s[k], lo = Math.min(a, z, 0), hi = Math.max(a, z, 0) || 1, sc = v => 6 + (v - lo) / (hi - lo || 1) * 88;
+    const good = (z - a) * better >= 0;
+    const delta = k === 'max_drawdown' || k === 'volatility' ? ((Math.abs(z) - Math.abs(a)) / Math.abs(a || 1)) : (z - a) / Math.abs(a || 1);
+    return `<div class="db up"><span class="dim">${lbl}</span><div class="track"><i class="l" style="left:${Math.min(sc(a), sc(z))}%;width:${Math.abs(sc(a) - sc(z))}%"></i>
+      <i class="dot" style="left:${sc(a)}%;background:${C.dim}" title="buy &amp; hold ${f(a)}"></i><i class="dot" style="left:${sc(z)}%;background:${good ? C.amber : C.red}" title="strategy ${f(z)}"></i></div>
+      <span style="text-align:right" class="${good ? 'amber' : 'red'}">${spct(delta)}</span></div>`;
+  }).join('') + `<div class="dim" style="margin-top:6px">strategy ${pct(s.cagr)} cagr / ${pct(s.max_drawdown)} max dd · b&amp;h ${pct(b.cagr)} / ${pct(b.max_drawdown)}</div>`;
+}
+function renderPareto() {
+  const { ctx, w, h } = fit($('pareto'));
+  const eps = S.episodes.slice().sort((a, b) => a.depth - b.depth).slice(0, 10);
+  const pad = 22, bw = (w - pad * 2) / Math.max(eps.length, 1), maxD = Math.max(...eps.map(e => -e.depth), 0.01);
+  const totDays = eps.reduce((s, e) => s + e.days, 0) || 1;
+  ctx.font = '9px ' + css('--mono');
+  eps.forEach((e, i) => {
+    const bh = -e.depth / maxD * (h - pad * 2);
+    ctx.fillStyle = i === 0 ? C.amber : i < 3 ? '#3a5276' : '#2a3a52';
+    ctx.fillRect(pad + i * bw + 2, h - pad - bh, bw - 4, bh);
+  });
+  ctx.strokeStyle = C.fg; ctx.fillStyle = C.fg; ctx.lineWidth = 1; ctx.beginPath(); let cum = 0;
+  eps.forEach((e, i) => { cum += e.days; const x = pad + i * bw + bw / 2, y = h - pad - cum / totDays * (h - pad * 2); i ? ctx.lineTo(x, y) : ctx.moveTo(x, y) });
+  ctx.stroke(); cum = 0;
+  eps.forEach((e, i) => { cum += e.days; ctx.beginPath(); ctx.arc(pad + i * bw + bw / 2, h - pad - cum / totDays * (h - pad * 2), 2.5, 0, 7); ctx.fill() });
+  ctx.fillStyle = C.dim; ctx.textAlign = 'left'; ctx.fillText(pct(-maxD, 0) + ' deepest', pad, 12);
+  ctx.textAlign = 'right'; ctx.fillText('line = cum. days underwater', w - 4, 12);
+  ctx.textAlign = 'center'; eps.forEach((e, i) => ctx.fillText(e.trough.slice(2, 7), pad + i * bw + bw / 2, h - 8));
+  $('paretoLbl').textContent = `${S.episodes.length} episodes`;
+}
+
+/* ---------------- wiring ---------------- */
+function renderAll() { torus.key = null; renderCallout(); renderRail(); renderStream(); renderRose(); renderDumbbell(); renderPareto() }
+function select(i) {
+  sleeveIdx = i; S = DATA.sleeves[i]; torus.hover = null;
+  try { localStorage.setItem('tb.sleeve', String(i)) } catch (e) {}
+  document.querySelectorAll('.tab').forEach((b, j) => b.setAttribute('aria-pressed', String(j === i)));
+  renderTop(); renderAll();
+}
+if (!DATA || !DATA.sleeves.length) {
+  document.body.innerHTML = '<p style="padding:20px">No data embedded. Generate with: python -m tradingbot dashboard --synthetic</p>';
+} else {
+  renderHeader(); select(sleeveIdx);
+  const hero = $('torus');
+  hero.addEventListener('pointermove', heroPointer);
+  hero.addEventListener('pointerdown', heroPointer);
+  hero.addEventListener('pointerleave', () => { torus.hover = null; renderCallout() });
+  let rt; addEventListener('resize', () => { clearTimeout(rt); rt = setTimeout(renderAll, 150) });
+  requestAnimationFrame(loop);
+}
+</script>
+</body>
+</html>
